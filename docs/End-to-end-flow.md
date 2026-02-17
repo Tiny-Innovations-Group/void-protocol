@@ -1,11 +1,11 @@
-# Void Protocol — End-to-End Flow (v2.0)
+# Void Protocol — End-to-End Flow (v2.1)
 
 > 🛰️ VOID PROTOCOL v2.0 | Tiny Innovation Group Ltd
->
+> 
 > Authority: Tiny Innovation Group Ltd
->
+> 
 > License: Apache 2.0
->
+> 
 > Status: Authenticated Clean Room Spec
 
 The following sequence defines the lifecycle of a trustless M2M transaction, from initial factory onboarding to final escrow settlement and receipt delivery. This flow is strictly optimized for **32/64-bit hardware alignment** and the **Hybrid Endianness** model (Big-Endian Headers / Little-Endian Payloads).
@@ -32,8 +32,8 @@ sequenceDiagram
         Note over SatA, Chain: 🟢 PHASE 1: ONBOARDING (Factory / Pre-Flight)
 
         Note over SatA, Ground: 86-Character Passphrase Generated
-        SatA->>SatA: 🔑 SHA-256 (HW) -> 32-byte Shared Key
-        SatB->>SatB: 🔑 SHA-256 (HW) -> 32-byte Shared Key
+        SatA->>SatA: 🔑 SHA-256 (HW) -> 32-byte Master Key
+        SatB->>SatB: 🔑 SHA-256 (HW) -> 32-byte Master Key
 
         alt is PUF Capable?
             SatA->>SatA: 🔑 Derive Key from Silicon (PUF)
@@ -46,9 +46,28 @@ sequenceDiagram
         DB->>DB: 📝 Register in "Allowed Sats" Table
     end
 
-    %% PHASE 2: THE DEAL
+    %% PHASE 2: HANDSHAKE (AOS)
+    rect rgb(50, 20, 50)
+        Note over SatB, Ground: 🟣 PHASE 2: HANDSHAKE (AOS / Session Start)
+        
+        SatB->>SatB: 🎲 Gen Ephemeral Keys (X25519)
+        SatB->>SatB: ✍️ Sign (Timestamp + TTL + PubKey)
+        SatB->>Ground: 📡 Broadcast PACKET H (Init) [112 Bytes]
+        
+        Ground->>Ground: 🔍 Verify Sat B Signature
+        Ground->>Ground: 🎲 Gen Ground Ephemeral Keys
+        Ground->>Ground: 🧮 Derive SESSION_KEY (ECDH)
+        Ground->>SatB: 📡 Transmit PACKET H (Resp) [112 Bytes]
+
+        SatB->>SatB: 🔍 Verify Ground Signature
+        SatB->>SatB: 🧮 Derive SESSION_KEY (ECDH)
+        SatB->>SatB: 🗑️ Wipe Ephemeral PrivKey (Forward Secrecy)
+        Note right of SatB: Session Active (TTL Window)
+    end
+
+    %% PHASE 3: THE DEAL
     rect rgb(30, 35, 45)
-        Note over SatA, Chain: 🔵 PHASE 2: THE DEAL (In-Orbit)
+        Note over SatA, Chain: 🔵 PHASE 3: THE DEAL (In-Orbit)
 
         SatA->>SatA: 🔒 Encrypt Invoice (ChaCha20)
         SatA->>SatB: 📡 Broadcast PACKET A (Invoice)
@@ -57,30 +76,31 @@ sequenceDiagram
 
         SatB->>SatB: 🔓 Decrypt (Verify Price/Terms)
         SatB->>SatB: 📦 Wrap -> PACKET B (176 Bytes)
+        SatB->>SatB: 🔒 Encrypt Payload w/ SESSION_KEY
         SatB->>SatB: ✍️ Sign with PUF Signature (Offsets 0-107)
     end
 
-    %% PHASE 3: SETTLEMENT
+    %% PHASE 4: SETTLEMENT
     rect rgb(45, 45, 30)
-        Note over SatA, Chain: 🟠 PHASE 3: SETTLEMENT (The 60s Window)
+        Note over SatA, Chain: 🟠 PHASE 4: SETTLEMENT (The 60s Window)
 
         SatB->>Ground: ⬇️ Downlink PACKET B (176 Bytes)
 
         Ground->>DB: 🔍 Resolve Sat B Public Key
         Ground->>Ground: ✅ Verify Sat B PUF Signature
-        Ground->>Ground: 🔓 Decrypt Payload (Shared Key)
+        Ground->>Ground: 🔓 Decrypt Payload (SESSION_KEY)
 
         Ground->>Chain: 💸 Execute Settlement (L2)
         Chain-->>Ground: ✅ Confirmed
     end
 
-    %% PHASE 4: THE ACK BURST
+    %% PHASE 5: THE ACK BURST
     rect rgb(40, 30, 40)
-        Note over SatA, Chain: 🟣 PHASE 4: ACK BURST (Downlink)
+        Note over SatA, Chain: 🟣 PHASE 5: ACK BURST (Downlink)
 
         Ground->>Ground: 📝 Construct TUNNEL_DATA (88 Bytes)
         Ground->>Ground: ✍️ Sign (Ground Key)
-        Ground->>Ground: 🔒 Encrypt TUNNEL_DATA (ChaCha20)
+        Ground->>Ground: 🔒 Encrypt TUNNEL_DATA (SESSION_KEY)
 
         loop Rapid Fire (Maximize Reliability)
             Ground-->>SatB: ⬆️ Uplink ACK (120 Bytes)
@@ -93,22 +113,22 @@ sequenceDiagram
         SatB->>SatB: 💾 Store ENC_TUNNEL (88 Bytes)
     end
 
-    %% PHASE 5: THE RELAY
+    %% PHASE 6: THE RELAY
     rect rgb(30, 40, 30)
-        Note over SatA, Chain: 🟢 PHASE 5: EXECUTION (Space Relay)
+        Note over SatA, Chain: 🟢 PHASE 6: EXECUTION (Space Relay)
 
         loop For DURATION ms (defined in Relay Ops)
             SatB->>SatA: 📡 Broadcast TUNNEL_DATA (88 Bytes)
         end
 
-       SatA->>SatA: 🔓 Decrypt (Shared Key)
+       SatA->>SatA: 🔓 Decrypt (Master/Session Key)
         SatA->>SatA: 🔍 Verify Ground Signature (64-byte Sig)
         SatA->>SatA: 🔓 EXECUTE: UNLOCK / DISPENSE
     end
 
-    %% PHASE 6: THE RECEIPT
+    %% PHASE 7: THE RECEIPT
     rect rgb(30, 40, 50)
-        Note over SatA, Chain: 🔵 PHASE 6: RECEIPT (Loop Close)
+        Note over SatA, Chain: 🔵 PHASE 7: RECEIPT (Loop Close)
 
         SatA->>SatA: 📝 Create PACKET C (Receipt)
         SatA->>SatA: 🔒 Encrypt Status/ID (ChaCha20)
@@ -122,9 +142,9 @@ sequenceDiagram
         Ground->>Chain: ⛓️ Update "Completed" Status
     end
 
-    %% PHASE 7: SAFETY & FAILSAFE
+    %% PHASE 8: SAFETY & FAILSAFE
     rect rgb(60, 20, 20)
-        Note over SatA, Ground: 🔴 PHASE 7: SAFETY & FAILSAFE (Link Loss)
+        Note over SatA, Ground: 🔴 PHASE 8: SAFETY & FAILSAFE (Link Loss)
 
         alt Link Active
             Ground-->>SatA: 💓 Heartbeat / Command Extension
@@ -144,17 +164,18 @@ sequenceDiagram
 
 The following table summarizes the updated packet sizes and time-box constraints, aligned with the finalized **Rule of 8/4** specifications.
 
-| Phase            | Who            | Action                           | Final Size | Time box / Retry           |
-| ---------------- | -------------- | -------------------------------- | ---------- | -------------------------- |
-| **Onboarding**   | Device         | PUF key + Sat ID → Lookup        | -          | One-time                   |
-| **Discovery**    | Sat A          | Broadcast **Packet A** (Invoice) | **68B**    | Per service event          |
-| **Intent**       | Sat B          | Encapsulate & Sign **Packet B**  | **176B**   | Per orbital pass           |
-| **Settlement**   | Ground         | Verify & Pay on L2               | -          | Until L2 confirmation      |
-| **ACK Downlink** | Ground → Sat B | Send **Ack Packet** (Downlink)   | **120B**   | **Retry until ACK or 60s** |
-| **ACK Relay**    | Sat B → Sat A  | Broadcast **Tunnel Data**        | **88B**    | **DURATION ms**            |
-| **Unlock**       | Sat A          | Verify & Execute UNLOCK          | -          | On first valid 88B packet  |
-| **Receipt**      | Sat A → Sat B  | Transmit **Packet C** (Receipt)  | **104B**   | Immediately after unlock   |
-| **Delivery**     | Sat B → Ground | Downlink **Packet D** (Delivery) | **128B**   | Next available radio slot  |
+| Phase | Who | Action | Final Size | Time box / Retry |
+| --- | --- | --- | --- | --- |
+| **Onboarding** | Device | PUF key + Sat ID → Lookup | - | One-time |
+| **Handshake** | Sat B/Ground | Ephemeral Key Exchange (ECDH) | **112B** | **On AOS (Session Start)** |
+| **Discovery** | Sat A | Broadcast **Packet A** (Invoice) | **68B** | Per service event |
+| **Intent** | Sat B | Encapsulate & Sign **Packet B** | **176B** | Per orbital pass |
+| **Settlement** | Ground | Verify & Pay on L2 | - | Until L2 confirmation |
+| **ACK Downlink** | Ground → Sat B | Send **Ack Packet** (Downlink) | **120B** | **Retry until ACK or 60s** |
+| **ACK Relay** | Sat B → Sat A | Broadcast **Tunnel Data** | **88B** | **DURATION ms** |
+| **Unlock** | Sat A | Verify & Execute UNLOCK | - | On first valid 88B packet |
+| **Receipt** | Sat A → Sat B | Transmit **Packet C** (Receipt) | **104B** | Immediately after unlock |
+| **Delivery** | Sat B → Ground | Downlink **Packet D** (Delivery) | **128B** | Next available radio slot |
 
 **End-to-End Performance Note:** The critical "Happy Path" from Ground receipt of Packet B to Sat A execution should complete within **60 seconds**. All data structures are aligned to 8-byte boundaries to minimize latency during high-speed decryption/verification on the ESP32-S3.
 
@@ -162,9 +183,10 @@ The following table summarizes the updated packet sizes and time-box constraints
 
 ## Technical Links
 
-- [Protocol Spec v2.1 (A & B)](./Protocol-spec.md)
-- [Acknowledgement Spec v2.1 (Ack & Tunnel)](./Acknowledgment-spec.md)
-- [Receipt Spec v2.1 (C & D)](./Receipt-spec.md)
+* [Handshake Spec v2.1 (AOS/Session)]()
+* [Protocol Spec v2.1 (A & B)]()
+* [Acknowledgement Spec v2.1 (Ack & Tunnel)]()
+* [Receipt Spec v2.1 (C & D)]()
 
 ---
 
