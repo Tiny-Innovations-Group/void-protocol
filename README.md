@@ -75,8 +75,8 @@ This project is structured for **PlatformIO** and optimized for the **Heltec WiF
 This is an open-source project. However, all contributors must be authenticated with the **Tiny-Innovations-Group** organization to push changes. Ensure your local git identity is configured to match your authorized organization account:
 
 ```bash
-git config user.name "director-TIG"
-git config user.email "director@tiny-innovations.group"
+git config user.name "your-name"
+git config user.email "your-email"
 
 ```
 
