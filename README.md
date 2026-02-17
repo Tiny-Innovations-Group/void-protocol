@@ -1,8 +1,11 @@
 # Void Protocol v2.0
 
 > 🛰️ VOID PROTOCOL v2.0 | Tiny Innovation Group Ltd
+>
 > Authority: Tiny Innovation Group Ltd
+>
 > License: Apache 2.0
+>
 > Status: Authenticated Clean Room Spec
 
 Void Protocol v2.0 is a high-performance, military-grade settlement layer designed for **Machine-to-Machine (M2M)** transactions between orbital assets. It facilitates trustless commerce (data, fuel, or compute) by utilizing an encrypted store-and-forward architecture optimized for embedded satellite hardware like the **ESP32-S3** (Heltec V3).
