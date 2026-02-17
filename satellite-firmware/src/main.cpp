@@ -17,13 +17,15 @@ void setup() {
     #else
         Void.updateDisplay("ROLE", "BUYER (Sat B)");
         Void.radio.startReceive(); // Buyer starts in RX mode
+    #else
+        #error "Please define a ROLE in main.cpp"
     #endif
 }
 
 void loop() {
     #ifdef ROLE_SELLER
         runSellerLoop();
-    #else
+    #elif defined(ROLE_BUYER)
         runBuyerLoop();
     #endif
 }
