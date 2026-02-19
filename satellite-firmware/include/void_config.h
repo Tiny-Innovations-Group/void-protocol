@@ -1,3 +1,13 @@
+/*-------------------------------------------------------------------------
+ * 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+ * -------------------------------------------------------------------------
+ * Authority: Tiny Innovation Group Ltd
+ * License:   Apache 2.0
+ * Status:    Authenticated Clean Room Spec
+ * File:      void_config.h
+ * Desc:      Configuration constants for VOID Protocol Satellite.
+ * -------------------------------------------------------------------------*/
+
 #ifndef VOID_CONFIG_H
 #define VOID_CONFIG_H
 

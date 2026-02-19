@@ -6,6 +6,7 @@
  * Status:    Authenticated Clean Room Spec
  * File:      void_packets.h
  * Desc:      Packed structures for OTA serialization.
+ * -------------------------------------------------------------------------
  * WARNING: Payloads are Little-Endian. Headers are Big-Endian.
  * -------------------------------------------------------------------------*/
 

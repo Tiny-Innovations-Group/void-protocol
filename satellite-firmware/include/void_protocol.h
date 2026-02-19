@@ -1,3 +1,17 @@
+/*-------------------------------------------------------------------------
+ * 🛰️ VOID PROTOCOL v2.1 | Tiny Innovation Group Ltd
+ * -------------------------------------------------------------------------
+ * Authority: Tiny Innovation Group Ltd
+ * License:   Apache 2.0
+ * Status:    Authenticated Clean Room Spec
+ * File:      void_protocol.h
+ * Desc:      Main VOID Protocol class definition and global instance.
+ *            This is the central hub for all protocol operations, including
+ *            packet handling, display updates, and CRC calculations.
+ * -------------------------------------------------------------------------
+ * WARNING: Payloads are Little-Endian. Headers are Big-Endian.
+ * -------------------------------------------------------------------------*/
+
 #ifndef VOID_PROTOCOL_H
 #define VOID_PROTOCOL_H
 
