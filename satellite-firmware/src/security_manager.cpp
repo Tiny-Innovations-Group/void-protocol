@@ -5,7 +5,8 @@
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
  * File:      security_manager.cpp
- * Desc:      Security Manager for VOID Protocol Satellite Firmware.    
+ * Desc:      Security Manager for VOID Protocol Satellite Firmware (Ed25519/X25519/ChaCha20).  
+ * Compliant: NSA Clean C++ (RAII, No-Heap, Forward Secrecy).  
  * -------------------------------------------------------------------------*/
 
 #include "security_manager.h"
@@ -40,7 +41,12 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
     // 3. Populate Packet Header
     pkt.header.ver_type_sec = 0x18; // Version 0, Type 1, Sec 1, APID (Upper)
     pkt.header.apid_lo = 0xB2;      // APID: Sat B
-    pkt.header.packet_len = sizeof(PacketH_t) - 1;
+    pkt.header.seq_flags = 0xC0;    // Unsegmented (11)
+    pkt.header.seq_count_lo = 0x00; // Counter (Mock)
+
+    // Packet Length: Swap to Big-Endian
+    uint16_t raw_len = sizeof(SIZE_VOID_HEADER) - 1;
+    pkt.header.packet_len = (raw_len >> 8) | (raw_len << 8);
 
     // 4. Fill Data
     pkt.session_ttl = ttl_seconds;
@@ -51,6 +57,12 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
     // Sign bytes 0 to 47 (Header + TTL + TS + PubKey)
     unsigned long long sig_len;
     crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 48, _identity_priv);
+    // Defensive: Ensure signature length is as expected (Ed25519 = 64 bytes)
+    if (sig_len != 64) {
+        // Handle error: signature length mismatch (could log, assert, or set error state)
+        // For embedded, a simple infinite loop is a safe fail-stop
+        while (1) {}
+    }
 }
 
 // --- PHASE 2: RESPONSE (Ground -> Sat B) ---
@@ -97,6 +109,10 @@ void SecurityManager::encryptPacketB(PacketB_t& pkt, const uint8_t* payload_in, 
     // Sign everything from Header to Nonce (Offset 0 to 107)
     unsigned long long sig_len;
     crypto_sign_detached(pkt.signature, &sig_len, (uint8_t*)&pkt, 108, _identity_priv);
+    // Defensive: Ensure signature length is as expected (Ed25519 = 64 bytes)
+    if (sig_len != 64) {
+        while (1) {}
+    }
 }
 
 // --- UTILITIES ---

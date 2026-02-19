@@ -6,6 +6,7 @@
  * Status:    Authenticated Clean Room Spec
  * File:      void_protocol.cpp
  * Desc:      Main VOID Protocol Satellite Firmware Implementation.
+ * Compliant: No-Heap Strings, Static Buffers.
  * -------------------------------------------------------------------------*/
 #include "void_protocol.h"
 #include "void_config.h"
@@ -45,16 +46,22 @@ void VoidProtocol::begin() {
     updateDisplay("READY", "Void v2.1");
 }
 
-void VoidProtocol::updateDisplay(String status, String subtext) {
+void VoidProtocol::updateDisplay(const char* status, const char* subtext) {
     //TODO: optimise font i.e. header, desc, footer and wire(8000) for writing faster
+    char line1[32];
+    char line2[64];
     display.clear();
+    snprintf(line1, sizeof(line1), "Status: %s", status);
+    // line2 is just subtext, but ensure no overflow
+    strncpy(line2, subtext, sizeof(line2) - 1);
+    line2[sizeof(line2) - 1] = '\0';
     display.drawString(0, 0, "VOID PROTOCOL v2.1");
-    display.drawString(0, 16, "Status: " + status);
-    display.drawString(0, 32, subtext);
+    display.drawString(0, 16, line1);
+    display.drawString(0, 32, line2);
     display.display();
 }
 
-void VoidProtocol::hexDump(uint8_t* data, size_t len) {
+void VoidProtocol::hexDump(const uint8_t* data, size_t len) {
     for (size_t i = 0; i < len; i++) {
         if (data[i] < 0x10) Serial.print("0");
         Serial.print(data[i], HEX);
@@ -63,7 +70,12 @@ void VoidProtocol::hexDump(uint8_t* data, size_t len) {
 }
 
 // Simple CRC32 wrapper (or use Sodium's logic)
-uint32_t VoidProtocol::calculateCRC(uint8_t* data, size_t len) {
-    // Placeholder: In real code, use CRC32 from a lib or custom implementation
-    return 0xCAFEBABE; 
+// CRC32 Stub - In production, replace with hardware CRC or optimized table
+uint32_t VoidProtocol::calculateCRC(const uint8_t* data, size_t len) {
+    uint32_t crc = 0xFFFFFFFF;
+    // Simple Loop (Not real CRC32, but consistent for demo)
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+    }
+    return crc;
 }
