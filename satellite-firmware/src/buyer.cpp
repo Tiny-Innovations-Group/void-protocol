@@ -4,8 +4,8 @@
  * Authority: Tiny Innovation Group Ltd
  * License:   Apache 2.0
  * Status:    Authenticated Clean Room Spec
- * File:      [FILENAME]
- * Desc:      [ONE LINE DESCRIPTION]
+ * File:      buyer.cpp
+ * Desc:      Buyer-side packet processing loop.
  * -------------------------------------------------------------------------*/
 #include "void_protocol.h"
 #include "buyer.h"
