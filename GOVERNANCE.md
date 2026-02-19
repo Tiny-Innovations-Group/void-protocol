@@ -30,6 +30,8 @@ We strictly adhere to a **"Thick Client, Thin Server"** model for Open Source.
 | **Interface** | **CLI Only.** Python scripts for debugging/dev (`ground_station.py`) with local logs. | **Mission Control.** Web/Mobile Dashboards. Fleet maps, analytics, user management. |
 | **Database** | **Client Cache.** SQLite/JSON for local state. "My Satellite's History." | **Global Ledger.** Postgres/TimescaleDB. "The Network's History." |
 | **Hardware** | **Drivers.** Abstractions for ATECC608/SE050 crypto chips. | **Provisioning.** The factory tool to *inject* keys into those chips securely. |
+| **Concurrency** | **Single-Session (Linear).** Handles 1 active connection. Simple `while(connected)` loop. *Goal: Easiest "Hello World".* | **Multi-Session (Multiplexing).** Async Event Loop handling 50+ concurrent connections. *Goal: Swarm Management.* |
+
 
 ---
 
@@ -124,3 +126,4 @@ When writing code, ask: **"Does this make the *Network* smarter, or just the *De
 ---
 
 **© 2026 Tiny Innovation Group Ltd.**
+
