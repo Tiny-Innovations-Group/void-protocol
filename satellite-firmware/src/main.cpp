@@ -14,11 +14,6 @@
 #include "seller.h"
 #include "buyer.h"
 
-// --- CONFIGURATION ---
-// #define ROLE_SELLER
-#define ROLE_BUYER
-#define DEMO 1 // <--- Uncomment to enable Serial 'H' Handshake trigger
-// ---------------------
 
 void setup()
 {
