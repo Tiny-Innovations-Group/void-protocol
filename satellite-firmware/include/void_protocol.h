@@ -20,6 +20,7 @@
 #include <sodium.h>
 #include "SSD1306Wire.h"
 #include "void_packets.h" // Your Packet Structs
+#include "void_config.h" // Your Packet Structs
 
 class VoidProtocol {
 public:
