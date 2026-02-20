@@ -59,7 +59,12 @@ void SecurityManager::prepareHandshake(PacketH_t& pkt, uint16_t ttl_seconds) {
 
     // Packet Length: Swap to Big-Endian
     uint16_t raw_len = SIZE_PACKET_H - 1;
-    pkt.header.packet_len = (raw_len >> 8) | (raw_len << 8);
+    // pkt.header.packet_len = (raw_len >> 8) | (raw_len << 8);
+    /*
+    Integer Promotion: In C++, whenever you do bitwise math (<<, >>, |) on 
+    an 8-bit or 16-bit integer, the compiler automatically promotes it to a 32-bit int under the hood. When you try to save it back into a uint16_t, it throws a -Wconversion error because it thinks you might lose data. 
+    We fix this by wrapping the math in a static_cast<uint16_t>(...).*/
+    pkt.header.packet_len = static_cast<uint16_t>((raw_len >> 8) | (raw_len << 8));
 
     // 4. Fill Data
     pkt.session_ttl = ttl_seconds;

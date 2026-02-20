@@ -15,7 +15,7 @@ static PacketA_t invoice;
 
 // Helper to extract APID safely
 static uint16_t getAPID(const uint8_t* buf) {
-    return ((buf[0] & 0x07) << 8) | buf[1];
+    return static_cast<uint16_t>(((buf[0] & 0x07) << 8) | buf[1]);
 }
 
 void runSellerLoop() {
@@ -35,7 +35,8 @@ void runSellerLoop() {
         invoice.header.seq_count_lo = 0x00;
         
         uint16_t raw_len = SIZE_PACKET_A - 1;
-        invoice.header.packet_len = (raw_len >> 8) | (raw_len << 8);
+        // Wrap the math in static_cast
+        invoice.header.packet_len = static_cast<uint16_t>((raw_len >> 8) | (raw_len << 8));
 
         // Payload (Little Endian)
         invoice.sat_id = 0xAAAAAAAA;
@@ -88,7 +89,9 @@ void runSellerLoop() {
                     receipt.header.apid_lo = 0xA1;
                     
                     uint16_t rec_len = SIZE_PACKET_C - 1;
-                    receipt.header.packet_len = (rec_len >> 8) | (rec_len << 8);
+
+
+                    receipt.header.packet_len = static_cast<uint16_t>((rec_len >> 8) | (rec_len << 8));
                     
                     // Fill Mock Payload Data
                     receipt.exec_time = millis();

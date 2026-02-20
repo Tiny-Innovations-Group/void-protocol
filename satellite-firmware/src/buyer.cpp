@@ -18,7 +18,7 @@ static PacketA_t pending_invoice;
 
 // Helper to extract APID safely
 static uint16_t getAPID(const uint8_t* buf) {
-    return ((buf[0] & 0x07) << 8) | buf[1];
+    return static_cast<uint16_t>(((buf[0] & 0x07) << 8) | buf[1]);
 }
 
 void runBuyerLoop() {
@@ -72,7 +72,10 @@ void runBuyerLoop() {
             // Security.encryptPacketB(packet_b, (const uint8_t*)&pending_invoice, SIZE_PACKET_A);
             Security.encryptPacketB(packet_b, reinterpret_cast<const uint8_t*>(&pending_invoice), SIZE_PACKET_A);
             Serial.print("PACKET_B:");
-            Void.hexDump((const uint8_t*)&packet_b, SIZE_PACKET_B);
+
+            // To this:
+            Void.hexDump(reinterpret_cast<const uint8_t*>(&packet_b), SIZE_PACKET_B);
+            // Void.hexDump((const uint8_t*)&packet_b, SIZE_PACKET_B);
             invoice_pending = false; // Clear state
         }
         // Ground Sends L2 ACK/Tunnel Data
@@ -96,7 +99,8 @@ void runBuyerLoop() {
             PacketH_t mock_resp;
             for(int i = 0; i < 32; i++) {
                 char byteStr[3] = {serial_buf[14 + (i*2)], serial_buf[15 + (i*2)], '\0'};
-                mock_resp.eph_pub_key[i] = (uint8_t)strtol(byteStr, NULL, 16);
+                // mock_resp.eph_pub_key[i] = (uint8_t)strtol(byteStr, NULL, 16);
+                mock_resp.eph_pub_key[i] = static_cast<uint8_t>(strtol(byteStr, NULL, 16));
             }
             
             if (Security.processHandshakeResponse(mock_resp)) {

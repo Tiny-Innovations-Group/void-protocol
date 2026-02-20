@@ -29,8 +29,8 @@ public:
 
     void begin();
     void updateDisplay(String status, String subtext);
-    void hexDump(uint8_t* data, size_t len);
-    uint32_t calculateCRC(uint8_t* data, size_t len);
+    void hexDump(const uint8_t* data, size_t len);
+    uint32_t calculateCRC(const uint8_t* data, size_t len);
 
     #ifdef DEMO
     void pollDemoTriggers();
