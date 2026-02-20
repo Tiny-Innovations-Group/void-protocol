@@ -14,6 +14,8 @@
 
 #include <Arduino.h>
 #include "void_packets.h"
+#include <sodium.h>
+
 
 // NSA Guideline: Explicit State Management
 enum SessionState {

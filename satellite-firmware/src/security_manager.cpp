@@ -10,6 +10,7 @@
  * -------------------------------------------------------------------------*/
 
 #include "security_manager.h"
+#include <sodium.h>
 
 SecurityManager Security;
 
