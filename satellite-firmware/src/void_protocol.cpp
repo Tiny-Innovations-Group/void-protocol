@@ -40,7 +40,8 @@ void VoidProtocol::begin()
     }
 
     // 4. Init LoRa (SX1262)
-    int state = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, LORA_SYNC, 10);
+    // int state = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, LORA_SYNC, 10);
+    int state = radio.begin(static_cast<float>(LORA_FREQ), static_cast<float>(LORA_BW), LORA_SF, LORA_CR, LORA_SYNC, 10);
     if (state != RADIOLIB_ERR_NONE)
     {
 
@@ -103,7 +104,7 @@ void VoidProtocol::pollDemoTriggers() {
     // SIMULATE USB GROUND CONNECTION
     // In production, this is replaced by a formal Ground Station command parser or hardware interrupt.
     if (Serial.available() > 0) {
-        char cmd = Serial.read();
+        char cmd = static_cast<char>(Serial.read());
         if (cmd == 'H' || cmd == 'h') {
             updateDisplay("AUTH", "Generating Keys...");
             

@@ -28,7 +28,7 @@ public:
     SSD1306Wire display = SSD1306Wire(OLED_ADDR, OLED_SDA, OLED_SCL, GEOMETRY_128_64);
 
     void begin();
-    void updateDisplay(String status, String subtext);
+    void updateDisplay(const char* status, const char* subtext);
     void hexDump(const uint8_t* data, size_t len);
     uint32_t calculateCRC(const uint8_t* data, size_t len);
 
