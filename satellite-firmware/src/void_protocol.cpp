@@ -42,14 +42,27 @@ void VoidProtocol::begin()
     // 4. Init LoRa (SX1262)
     // int state = radio.begin(LORA_FREQ, LORA_BW, LORA_SF, LORA_CR, LORA_SYNC, 10);
 
-    // direct from RadioLib examples, but with explicit casts to satisfy -Wconversion warnings under C++14 strict typing rules
+    // // direct from RadioLib examples, but with explicit casts to satisfy -Wconversion warnings under C++14 strict typing rules
+    // int state = radio.begin(
+    //     static_cast<float>(LORA_FREQ), 
+    //     static_cast<float>(LORA_BW), 
+    //     static_cast<uint8_t>(LORA_SF), 
+    //     static_cast<uint8_t>(LORA_CR), 
+    //     static_cast<uint8_t>(LORA_SYNC), 
+    //     static_cast<int8_t>(10)
+    // );
+
+    // 4. Init LoRa (SX1262) - Explicitly passing ALL parameters to avoid RadioLib's double-precision defaults
     int state = radio.begin(
         static_cast<float>(LORA_FREQ), 
         static_cast<float>(LORA_BW), 
         static_cast<uint8_t>(LORA_SF), 
         static_cast<uint8_t>(LORA_CR), 
         static_cast<uint8_t>(LORA_SYNC), 
-        static_cast<int8_t>(10)
+        static_cast<int8_t>(10),       // Power
+        static_cast<uint16_t>(8),      // Preamble Length (RadioLib Default)
+        1.6f,                          // TCXO Voltage (Explicit float, fixes the 1.6 double error)
+        false                          // Use Regulator LDO (RadioLib Default)
     );
     // int state = radio.begin(static_cast<float>(LORA_FREQ), static_cast<float>(LORA_BW), LORA_SF, LORA_CR, LORA_SYNC, 10);
     if (state != RADIOLIB_ERR_NONE)
