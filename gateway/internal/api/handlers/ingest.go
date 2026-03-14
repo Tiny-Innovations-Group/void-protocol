@@ -46,7 +46,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 
 		if packetSize < 170 {
 			log.Printf("⛔ REJECTED: Packet B too short for signature verification")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Packet too short for signature verification"})
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet too short for signature verification"})
 			return true // Return true because we successfully identified the type, even if it failed validation
 		}
 
@@ -59,7 +59,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		// FIX: Check err != nil instead of !bool
 		if err := security.VerifyPacketSignature(b.SatId, messageBytes, b.Signature); err != nil {
 			log.Printf("⛔ REJECTED: %v", err) // Log the actual error from the verifier
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Cryptographic Signature"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
 		}
 		return true
@@ -70,7 +70,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 
 		if packetSize < 98 {
 			log.Printf("⛔ REJECTED: Packet C too short for signature verification")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Packet too short for signature verification"})
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Packet too short for signature verification"})
 			return true
 		}
 
@@ -84,7 +84,7 @@ func handlePayloadBody(body interface{}, rawData *[]byte, c *gin.Context, packet
 		// FIX: Check err != nil instead of !bool
 		if err := security.VerifyPacketSignature(sellerSatID, messageBytes, b.Signature); err != nil {
 			log.Printf("⛔ REJECTED: %v", err) // Log the actual error from the verifier
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Cryptographic Signature"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Invalid Cryptographic Signature"})
 			return true // ⛔ BOUNCE THE HACKER
 		}
 
@@ -122,7 +122,7 @@ func IngestPacket(c *gin.Context) {
 	// 1. Read the raw binary bytes from the request
 	rawData, err := io.ReadAll(c.Request.Body)
 	if err != nil || len(rawData) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing binary payload"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Missing binary payload"})
 		return
 	}
 
@@ -133,7 +133,7 @@ func IngestPacket(c *gin.Context) {
 
 	if err != nil {
 		log.Printf("⛔ BOUNCE: Malformed Protocol Frame: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Void Protocol Frame"})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "Invalid Void Protocol Frame"})
 		return
 	}
 

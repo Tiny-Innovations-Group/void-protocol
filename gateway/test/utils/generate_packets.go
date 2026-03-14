@@ -119,20 +119,14 @@ func genPacketB(isSnlp bool) []byte {
 	writeLE(&msg, uint64(1710000100))                 // EpochTs
 	writeLE(&msg, []float64{7010.0, -11990.0, 560.0}) // PosVec
 
-	// 3. EncPayload (62 Bytes)
-	// We just fill this with 62 bytes of raw data so it perfectly aligns.
-	enc := make([]byte, 62)
-	copy(enc, []byte("PAYMENT_INTENT"))
-	msg.Write(enc)
-
-	// // EncPayload (62 Bytes)
-	// var enc bytes.Buffer
-	// writeLE(&enc, uint64(1710000000))
-	// writeLE(&enc, uint32(420000000))
-	// writeLE(&enc, uint16(1))
-	// enc.Write([]byte("PAYMENT_INTENT"))
-	// enc.Write(make([]byte, 62-enc.Len())) // Pad to 62
-	// msg.Write(enc.Bytes())
+	// Structured EncPayload (62 Bytes)
+	var enc bytes.Buffer
+	writeLE(&enc, uint64(1710000000))     // InvoiceTs
+	writeLE(&enc, uint32(420000000))      // Amount
+	writeLE(&enc, uint16(1))              // AssetId
+	enc.Write([]byte("PAYMENT_INTENT"))   // Intent string
+	enc.Write(make([]byte, 62-enc.Len())) // Pad to 62
+	msg.Write(enc.Bytes())
 
 	writeLE(&msg, apidSatB)       // SatId
 	writeLE(&msg, uint32(123456)) // Nonce
