@@ -93,6 +93,16 @@ If you only want parse+verify (for example, when chasing a kaitai/sig-verify reg
 
 ### Environment variables
 
+The gateway uses [`github.com/joho/godotenv/autoload`](https://github.com/joho/godotenv) to read a `gateway/.env` file at startup. Variables already set in the OS environment take precedence — `.env` only fills in values that aren't already exported, so a production deploy that injects via systemd/k8s/etc. is unaffected.
+
+A minimal flat-sat `gateway/.env`:
+```bash
+VOID_ALPHA_PLAINTEXT=1
+VOID_ESCROW_ADDRESS=0x5FbDB2315678afecb367f032d93F642f64180aa3
+```
+With that file present you can simply `cd gateway && go run ./cmd/server` — no inline env vars needed.
+
+
 | Var | Default | Purpose |
 |---|---|---|
 | `VOID_ALPHA_PLAINTEXT` | unset | Set to `1` for alpha plaintext mode (no ChaCha20 decrypt). Required to match the firmware build. |

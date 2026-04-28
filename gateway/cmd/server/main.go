@@ -17,6 +17,12 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 
 	"github.com/gin-gonic/gin"
+	// Side-effect import: on package init, loads gateway/.env into the
+	// process environment IF the file exists. Real OS env vars take
+	// precedence — godotenv never overwrites a value already set —
+	// so a production deployment that injects env via systemd/k8s/etc.
+	// is unaffected by a stray .env in the repo.
+	_ "github.com/joho/godotenv/autoload"
 )
 
 // Env-var surface. Missing VOID_ESCROW_ADDRESS disables the entire
