@@ -26,9 +26,20 @@ static PacketA_t invoice;
 static volatile bool rx_flag = false;
 static void IRAM_ATTR onRxDone() { rx_flag = true; }
 
-// Helper to extract APID safely
+// Helper to extract the 11-bit CCSDS APID safely.
+// VOID-139: must be tier-aware. Under SNLP (VOID_PROTOCOL_TYPE == 2) the
+// 14-byte header prepends a 4-byte sync word, so the CCSDS ID field — and
+// thus the APID — lives at buf[4]/buf[5], NOT buf[0]/buf[1]. This mirrors
+// buyer.cpp::extractAPID. Reading the CCSDS offsets on an SNLP frame yielded
+// ((0x1D & 0x07) << 8) | 0x01 = 1281, so an inbound PacketC never matched
+// SELLER_APID (100) and the seller never emitted PacketD — the long-missing
+// D-leg. (Protocol-spec-SNLP.md §1.1 sync word + §2 header layout.)
 static uint16_t getAPID(const uint8_t* buf) {
-    return static_cast<uint16_t>(((buf[0] & 0x07) << 8) | buf[1]);
+#if VOID_PROTOCOL_TYPE == 2
+    return static_cast<uint16_t>(((buf[4] & 0x07u) << 8) | buf[5]);
+#else
+    return static_cast<uint16_t>(((buf[0] & 0x07u) << 8) | buf[1]);
+#endif
 }
 
 // Pack a VOID header (BE) for a non-command telemetry packet into the
@@ -71,6 +82,10 @@ static void packVoidHeader(uint8_t* hdr, uint16_t apid, uint16_t body_len) {
 }
 
 #if VOID_PROTOCOL_TYPE == 2
+// VOID-139 LBT: max CAD attempts before a mandatory frame (PacketD) is
+// sent best-effort.
+static constexpr uint8_t kLbtMaxAttempts = 6;
+
 // VOID-136: handle an incoming PacketC (receipt) from the ground
 // bouncer egress path (VOID-138). On CRC-valid receipt, emit PacketD
 // (delivery) back toward Sat B.
@@ -81,8 +96,10 @@ static void packVoidHeader(uint8_t* hdr, uint16_t apid, uint16_t body_len) {
 // CRC scope matches the Go generator (generate_packets.go::genPacketC):
 // 14-byte SNLP header + 90-byte body-up-to-CRC. CRC field at [104..107],
 // tail pad at [108..111].
-static void handlePacketCReceipt(const uint8_t* buf, size_t len) {
-    if (len != SIZE_PACKET_C) return;
+// Returns true iff a PacketD (delivery) was actually transmitted — i.e. the
+// transaction completed. The caller uses this to re-open advertising.
+static bool handlePacketCReceipt(const uint8_t* buf, size_t len) {
+    if (len != SIZE_PACKET_C) return false;
 
     // Read the advertised CRC (little-endian) and recompute over the
     // first 104 bytes. Using Void.calculateCRC to stay consistent with
@@ -95,7 +112,7 @@ static void handlePacketCReceipt(const uint8_t* buf, size_t len) {
     const uint32_t calculated = Void.calculateCRC(buf, 104);
     if (advertised != calculated) {
         Serial.println("WARN: PacketC CRC mismatch — receipt dropped.");
-        return;
+        return false;
     }
 
     // Build PacketD. Payload convention (void_packets_snlp.h): the 98
@@ -111,18 +128,42 @@ static void handlePacketCReceipt(const uint8_t* buf, size_t len) {
     static uint8_t d_frame[packet_d_builder::kPacketDSize];
     if (!packet_d_builder::build(d_in, d_frame, sizeof(d_frame))) {
         Serial.println("ERR: packet_d_builder::build failed.");
-        return;
+        return false;
     }
 
-    Void.radio.transmit(d_frame, sizeof(d_frame));
+    // VOID-139 LBT: PacketD (delivery) is mandatory — CAD-gate, then send
+    // best-effort after the attempt cap.
+    const bool d_clear =
+        Void.transmitWhenClear(d_frame, sizeof(d_frame), kLbtMaxAttempts);
     Void.updateDisplay("SELLER", "Delivery TX (PacketD)");
-    Void.radio.startReceive();
+    Serial.println(d_clear
+        ? "SELLER: PacketC received, PacketD TX'd (clear)"
+        : "SELLER: PacketC received, PacketD TX'd (forced)");
+    return true;
 }
 #endif  // VOID_PROTOCOL_TYPE == 2
 
+// VOID-139: seller operational state. A real satellite advertises (beacons)
+// when idle, but must NOT keep firing fresh invoices while it is servicing a
+// transaction. On a half-duplex single radio a new PacketA beacon collides
+// with the in-flight ACK/PacketC/PacketD downlink legs and corrupts the
+// buyer's invoice RX (observed as "PacketA CRC fail"). We beacon only while
+// ADVERTISING; an emitted invoice moves us to AWAITING_RECEIPT and we stay
+// quiet until the transaction completes (PacketD emitted) or a timeout
+// fallback re-opens advertising.
+enum class SellerState : uint8_t { ADVERTISING, AWAITING_RECEIPT };
+
 void runSellerLoop() {
-    static unsigned long lastTx = 0;
-    static uint8_t rx_buffer[VOID_MAX_PACKET_SIZE];
+    static SellerState   txState   = SellerState::ADVERTISING;
+    static unsigned long lastTx    = 0;
+    static unsigned long engagedAt = 0;
+    static uint8_t       rx_buffer[VOID_MAX_PACKET_SIZE];
+
+    // Alpha-bench tunables. Beacon cadence when idle; engaged-timeout is a
+    // safety net so a dropped or no-show transaction re-advertises rather
+    // than wedging the seller silent forever.
+    static constexpr unsigned long kBeaconIntervalMs = 8000;
+    static constexpr unsigned long kEngagedTimeoutMs = 30000;
 
     // One-shot ISR arm: register DIO1 packet-received callback and put
     // the radio into continuous RX on first entry.
@@ -134,9 +175,18 @@ void runSellerLoop() {
     }
 
     // ---------------------------------------------------------
-    // 1. BROADCAST ADVERTISING (Phase 3)
+    // 1. BROADCAST ADVERTISING (Phase 3) — only while idle
     // ---------------------------------------------------------
-    if (millis() - lastTx > 8000) {
+    if (txState == SellerState::ADVERTISING &&
+        millis() - lastTx > kBeaconIntervalMs &&
+        !Void.channelClear()) {
+        // VOID-139 LBT: a beacon is due but the channel is busy (buyer
+        // mid-relay) — defer rather than collide. Re-arm RX (scanChannel
+        // left the radio in standby). lastTx is NOT advanced, so we retry
+        // promptly on the next loop once the air clears.
+        Void.radio.startReceive();
+    } else if (txState == SellerState::ADVERTISING &&
+               millis() - lastTx > kBeaconIntervalMs) {
         // Clear memory to prevent leaking RAM garbage
         memset(&invoice, 0, sizeof(PacketA_t));
 
@@ -168,15 +218,37 @@ void runSellerLoop() {
         Void.hexDump(reinterpret_cast<const uint8_t*>(&invoice), SIZE_PACKET_A);
         Void.updateDisplay("SELLER", "Broadcasting Invoice...");
         
-        lastTx = millis();
+        lastTx    = millis();
+        engagedAt = millis();
+        txState   = SellerState::AWAITING_RECEIPT;  // servicing — stop beaconing
         Void.radio.startReceive();
     }
 
     // ---------------------------------------------------------
-    // 2. LISTEN FOR TUNNEL RELAY (Phase 6) — ISR-gated, sized read
+    // 1b. Engaged-timeout safety net — re-open advertising if the
+    //     transaction never completed (no buyer / dropped leg). lastTx
+    //     is left as-is so the next beacon fires promptly.
+    // ---------------------------------------------------------
+    if (txState == SellerState::AWAITING_RECEIPT &&
+        millis() - engagedAt > kEngagedTimeoutMs) {
+        Serial.println("SELLER: receipt timeout — re-advertising");
+        txState = SellerState::ADVERTISING;
+    }
+
+    // ---------------------------------------------------------
+    // 2. LISTEN FOR DOWNLINK (Phase 6) — ISR-gated, sized read
     // ---------------------------------------------------------
     if (!rx_flag) return;
     rx_flag = false;
+
+    // VOID-139: reject the spurious DIO1 interrupt raised on TxDone (every
+    // beacon / PacketD) and CadDone (LBT scanChannel). Only a real RxDone
+    // should drive the receive path; otherwise we parse stale FIFO bytes.
+    if (!Void.isRealReception()) {
+        Void.radio.startReceive();
+        return;
+    }
+
     const size_t len = Void.radio.getPacketLength();
 
     // Safety bounds check
@@ -187,13 +259,27 @@ void runSellerLoop() {
             // STRICT HEADER PEEKING
             uint16_t apid = getAPID(rx_buffer);
 
+            // Diagnostic: log every received frame so we can tell the
+            // difference between "no LoRa downlink reaching the seller"
+            // (silence) and "frame arriving but not matching any handler"
+            // (mismatch printed). Cheap, non-conditional, alpha-bench only.
+            Serial.print("SELLER: RX frame apid=");
+            Serial.print(apid);
+            Serial.print(" len=");
+            Serial.println(static_cast<unsigned>(len));
+
             // VOID-136: PacketC (Receipt) from bouncer → emit PacketD (Delivery).
             // Post-VOID-135 the gateway is the authoritative receipt signer
             // and the bouncer egresses PacketC over LoRa. On verified (CRC-OK)
             // RX, Sat A confirms delivery via PacketD back to Sat B.
 #if VOID_PROTOCOL_TYPE == 2
             if (apid == SELLER_APID && len == SIZE_PACKET_C) {
-                handlePacketCReceipt(rx_buffer, len);
+                // Delivery sent → transaction complete. Re-open advertising
+                // with a guard window (lastTx reset) before the next invoice.
+                if (handlePacketCReceipt(rx_buffer, len)) {
+                    txState = SellerState::ADVERTISING;
+                    lastTx  = millis();
+                }
             } else
 #endif
             // Legacy Phase 6 TunnelData branch — preserved for backwards-compat

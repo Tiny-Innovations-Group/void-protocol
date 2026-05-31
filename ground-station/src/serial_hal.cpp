@@ -11,6 +11,18 @@
 
 #include "serial_hal.h"
 
+#include <mutex>
+
+// VOID-139: the bouncer drives this serial port from three threads
+// (cli_listener, egress_poll_listener, and the main hardware loop). Without
+// serialization their command lines (PACKET_ACK_TX: / PACKET_C_TX: / CLI)
+// can interleave on the wire and reach the firmware corrupted. A single
+// mutex makes every serial_write_bytes call atomic with respect to other
+// writers. Each logical command is written in a single serial_write_bytes
+// call, so locking the whole write keeps the line intact. Reads stay
+// lock-free — a non-blocking reader does not race writers at the byte level.
+static std::mutex g_serial_write_mtx;
+
 // =================================================================-------
 // WINDOWS IMPLEMENTATION
 // =================================================================-------
@@ -61,6 +73,7 @@ void serial_close() {
 }
 
 int serial_write_bytes(const uint8_t* buffer, size_t len) {
+    const std::lock_guard<std::mutex> lock(g_serial_write_mtx);
     if (hSerial == INVALID_HANDLE_VALUE) return -1;
     DWORD bytes_written;
     if (WriteFile(hSerial, buffer, static_cast<DWORD>(len), &bytes_written, NULL)) {
@@ -135,6 +148,7 @@ void serial_close() {
 
 
 int serial_write_bytes(const uint8_t* buffer, size_t len) {
+    const std::lock_guard<std::mutex> lock(g_serial_write_mtx);
     if (serial_fd == -1) return -1;
     int bytes_written = static_cast<int>(write(serial_fd, buffer, len));
     return (bytes_written > 0) ? bytes_written : 0;

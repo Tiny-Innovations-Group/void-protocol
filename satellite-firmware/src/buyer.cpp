@@ -36,6 +36,10 @@ static void IRAM_ATTR onRxDone() { rx_flag = true; }
 // A gap below target is flagged "UNDER" in the serial log, not dropped.
 static unsigned long last_tx_ms = 0;  // 0 sentinel = no TX yet this session
 
+// VOID-139 LBT: max CAD attempts before a mandatory frame is sent
+// best-effort. ~6 attempts × (8..48 ms backoff) ≈ <200 ms worst case.
+static constexpr uint8_t kLbtMaxAttempts = 6;
+
 #if VOID_PROTOCOL_TYPE == 2
 static constexpr uint32_t SNLP_SYNC_WORD = 0x1D01A5A5u;
 #endif
@@ -128,6 +132,18 @@ void runBuyerLoop() {
     // =====================================================================
     if (rx_flag) {
         rx_flag = false;
+
+        // VOID-139: DIO1 also fires on TxDone/CadDone, so this flag is set
+        // after every transmit() and scanChannel(). Reject the phantom
+        // before reading the radio — otherwise getPacketLength() returns the
+        // STALE last-RX length and readData() hands back the just-transmitted
+        // FIFO bytes (TX/RX share base 0x00), which then fail the PacketA CRC
+        // check. This — not RF collision — is the "PacketA CRC fail" drop.
+        if (!Void.isRealReception()) {
+            Void.radio.startReceive();
+            return;
+        }
+
         static uint8_t rx_buffer[VOID_MAX_PACKET_SIZE];
         const size_t len = Void.radio.getPacketLength();
 
@@ -179,7 +195,10 @@ void runBuyerLoop() {
     // 2. Serial ground-link commands
     // =====================================================================
     if (Serial.available() > 0) {
-        static char serial_buf[256];
+        // 512 holds the longest line the bouncer ever sends:
+        // "PACKET_ACK_TX:" (14) + 136-byte SNLP frame as hex (272) + \n + \0 = 288.
+        // 512 gives headroom for any future frame growth.
+        static char serial_buf[512];
         const size_t bytesRead =
             Serial.readBytesUntil('\n', serial_buf, sizeof(serial_buf) - 1);
         serial_buf[bytesRead] = '\0';
@@ -274,10 +293,14 @@ void runBuyerLoop() {
             packet_b.global_crc  = Void.calculateCRC(
                 reinterpret_cast<const uint8_t*>(&packet_b), crc_end);
 
-            // 2g. Transmit and return to receive.
-            Void.radio.transmit(
-                reinterpret_cast<uint8_t*>(&packet_b), SIZE_PACKET_B);
-            Void.radio.startReceive();
+            // 2g. Transmit (LBT-gated) and return to receive. PacketB is a
+            // mandatory frame — transmitWhenClear waits for a clear channel,
+            // then sends best-effort after the attempt cap.
+            if (!Void.transmitWhenClear(
+                    reinterpret_cast<uint8_t*>(&packet_b), SIZE_PACKET_B,
+                    kLbtMaxAttempts)) {
+                Serial.println("WARN: PacketB TX forced (channel never cleared)");
+            }
 
             Serial.print("PACKET_B:");
             Void.hexDump(reinterpret_cast<const uint8_t*>(&packet_b), SIZE_PACKET_B);
@@ -296,6 +319,62 @@ void runBuyerLoop() {
 
             Void.radio.transmit(tunnel_data, SIZE_TUNNEL_DATA);
             Void.radio.startReceive();
+        }
+        // -----------------------------------------------------------------
+        // VOID-134: bouncer userland built a PacketAck and asked us to
+        // relay it back over LoRa to Sat B (the buyer satellite — i.e.,
+        // ourselves in the flat-sat topology, but the buyer's RX path
+        // will hear it as a peer broadcast). Line format:
+        //   PACKET_ACK_TX:<272-hex-chars>\n   (14-byte prefix + 136 SNLP body)
+        // -----------------------------------------------------------------
+        else if (strncmp(serial_buf, "PACKET_ACK_TX:", 14) == 0) {
+            constexpr size_t kPrefix = 14;
+            if (bytesRead < kPrefix + 2 * SIZE_PACKET_ACK) {
+                Serial.println("WARN: PACKET_ACK_TX line truncated; dropped.");
+            } else {
+                static uint8_t ack_frame[SIZE_PACKET_ACK];
+                for (size_t i = 0; i < SIZE_PACKET_ACK; ++i) {
+                    const char byteStr[3] = {
+                        serial_buf[kPrefix + (i * 2)],
+                        serial_buf[kPrefix + (i * 2) + 1],
+                        '\0'
+                    };
+                    ack_frame[i] = static_cast<uint8_t>(
+                        strtol(byteStr, NULL, 16));
+                }
+                const bool ack_clear = Void.transmitWhenClear(
+                    ack_frame, SIZE_PACKET_ACK, kLbtMaxAttempts);
+                Serial.println(ack_clear
+                    ? "BUYER: Relayed PacketAck over LoRa (clear)"
+                    : "BUYER: Relayed PacketAck over LoRa (forced)");
+            }
+        }
+        // -----------------------------------------------------------------
+        // VOID-135b/138: bouncer egress poll handed us a PacketC for
+        // downlink to Sat A (the seller). Line format:
+        //   PACKET_C_TX:<224-hex-chars>\n    (12-byte prefix + 112 SNLP body)
+        // -----------------------------------------------------------------
+        else if (strncmp(serial_buf, "PACKET_C_TX:", 12) == 0) {
+            constexpr size_t kPrefix = 12;
+            if (bytesRead < kPrefix + 2 * SIZE_PACKET_C) {
+                Serial.println("WARN: PACKET_C_TX line truncated; dropped.");
+            } else {
+                static uint8_t c_frame[SIZE_PACKET_C];
+                for (size_t i = 0; i < SIZE_PACKET_C; ++i) {
+                    const char byteStr[3] = {
+                        serial_buf[kPrefix + (i * 2)],
+                        serial_buf[kPrefix + (i * 2) + 1],
+                        '\0'
+                    };
+                    c_frame[i] = static_cast<uint8_t>(
+                        strtol(byteStr, NULL, 16));
+                }
+                const bool c_clear = Void.transmitWhenClear(
+                    c_frame, SIZE_PACKET_C, kLbtMaxAttempts);
+                Serial.println(c_clear
+                    ? "BUYER: Relayed PacketC over LoRa (clear)"
+                    : "BUYER: Relayed PacketC over LoRa (forced)");
+            }
         }
         // -----------------------------------------------------------------
         // Ground returns its ephemeral key — derive session key

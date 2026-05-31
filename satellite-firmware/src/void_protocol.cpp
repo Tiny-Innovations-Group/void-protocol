@@ -127,6 +127,58 @@ uint32_t VoidProtocol::calculateCRC(const uint8_t *data, size_t len)
     return ~crc;
 }
 
+// VOID-139: one hardware CAD pass. RadioLib's scanChannel() drives the
+// SX1262's built-in Channel Activity Detection and returns
+// RADIOLIB_LORA_DETECTED when a LoRa preamble is on the air. Any other
+// result (RADIOLIB_CHANNEL_FREE or a negative error code) is treated as
+// "clear" — failing open so a CAD fault can never permanently gag a
+// mandatory transmit. Leaves the radio in standby (callers re-arm RX).
+// If detection proves unreliable, tune RadioLib's CAD params via
+// radio.setCad(...) — defaults are adequate for the flat-sat bench.
+bool VoidProtocol::channelClear()
+{
+    const int16_t state = radio.scanChannel();
+    return state != RADIOLIB_LORA_DETECTED;
+}
+
+// VOID-139: distinguish a genuine packet reception from the spurious DIO1
+// interrupt that the SX1262 raises on TxDone / CadDone. getIrqFlags() reads
+// the hardware IRQ status register (non-destructive — readData() clears it
+// later). RxDone and TxDone are distinct bits, so testing the RxDone bit is
+// robust even if a stale TxDone bit is still set: only a real reception sets
+// RxDone. Without this gate, every transmit() leaves rx_flag=true and the
+// next loop parses stale FIFO bytes as a bogus PacketA → "PacketA CRC fail".
+bool VoidProtocol::isRealReception()
+{
+    const uint32_t irq = radio.getIrqFlags();
+    return (irq & static_cast<uint32_t>(RADIOLIB_SX126X_IRQ_RX_DONE)) != 0u;
+}
+
+// VOID-139: CAD-gated mandatory transmit. Polls the channel up to
+// maxAttempts times with a short escalating backoff and transmits the
+// instant the air is clear. If it never clears, transmits anyway
+// (best-effort) — a relayed PacketC/PacketAck/PacketD MUST go out or the
+// commerce loop stalls; politeness yields to delivery. Returns true if
+// the frame went out on a verified-clear channel, false on the forced
+// fallback. Re-arms RX after the send.
+bool VoidProtocol::transmitWhenClear(uint8_t* data, size_t len,
+                                     uint8_t maxAttempts)
+{
+    for (uint8_t i = 0; i < maxAttempts; ++i) {
+        if (channelClear()) {
+            radio.transmit(data, len);
+            radio.startReceive();
+            return true;
+        }
+        // Escalating backoff staggers two stations so they don't lock-step
+        // retry into each other: 8, 16, 24 ... ms.
+        delay(static_cast<uint32_t>(8u + i * 8u));
+    }
+    radio.transmit(data, len);   // forced best-effort send
+    radio.startReceive();
+    return false;
+}
+
 #ifdef DEMO
 void VoidProtocol::pollDemoTriggers() {
     // SIMULATE USB GROUND CONNECTION

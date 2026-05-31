@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"math/big"
 	"os"
@@ -49,8 +50,64 @@ const (
 	// key vault.
 	demoSellerSeedHex = "bc1df4fa6e3d7048992f14e655060cbb2190bded9002524c06e7cbb163df15fb"
 
-	defaultReceiptsPath = "gateway/data/receipts.json"
+	// Receipts file location relative to the REPO ROOT (the directory
+	// containing .git), NOT the launch CWD. Anchoring to the repo root
+	// is what makes the path deterministic: launching the gateway from
+	// the repo root vs. from inside gateway/ must resolve to the SAME
+	// file. Before VOID-139 this was a bare CWD-relative string, so a
+	// launch from gateway/ silently produced a nested
+	// gateway/gateway/data/receipts.json and split persistence across
+	// two files — which breaks the #17 "0 double-settles across restart"
+	// criterion (the dedup set only loads from one of them).
+	defaultReceiptsRelPath = "gateway/data/receipts.json"
 )
+
+// findRepoRoot walks up from the current working directory until it
+// finds a directory containing a .git entry, and returns that directory.
+// The receipts file is anchored here so it lands at the canonical
+// <repo>/gateway/data/receipts.json regardless of whether the gateway
+// is launched from the repo root or from inside gateway/ (VOID-139).
+//
+// Returns an error (fail loud) rather than silently falling back to a
+// CWD-relative path — a wrong receipts location is exactly the failure
+// VOID-139 is closing, so we refuse to guess. Operators running the
+// binary outside the source tree can set VOID_RECEIPTS_PATH explicitly.
+func findRepoRoot() (string, error) {
+	start, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	dir := start
+	for {
+		// .git is a directory in a normal clone and a file in a git
+		// worktree — Stat matches both.
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return "", fmt.Errorf(
+				"could not locate repo root (no .git found walking up from %q); "+
+					"set VOID_RECEIPTS_PATH to an explicit path", start)
+		}
+		dir = parent
+	}
+}
+
+// resolveReceiptsPath returns the absolute receipts.json path. An
+// explicit VOID_RECEIPTS_PATH wins (made absolute relative to CWD, the
+// usual shell convention). Otherwise the path is anchored to the repo
+// root so it is independent of launch CWD.
+func resolveReceiptsPath() (string, error) {
+	if p := os.Getenv("VOID_RECEIPTS_PATH"); p != "" {
+		return filepath.Abs(p)
+	}
+	root, err := findRepoRoot()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(root, defaultReceiptsRelPath), nil
+}
 
 func main() {
 	// VOID-127: Alpha plaintext mode — when set, the gateway treats
@@ -188,9 +245,9 @@ func maybeInitChain() (*chainDeps, func(), error) {
 // with the demo seller seed, and spins a Watcher goroutine that feeds
 // the processor.
 func startReceiptWatcher(ctx context.Context, deps *chainDeps) error {
-	path := os.Getenv("VOID_RECEIPTS_PATH")
-	if path == "" {
-		path = defaultReceiptsPath
+	path, err := resolveReceiptsPath()
+	if err != nil {
+		return err
 	}
 	// Ensure parent dir exists — the server may run from a clean
 	// checkout where gateway/data/ has never been touched.

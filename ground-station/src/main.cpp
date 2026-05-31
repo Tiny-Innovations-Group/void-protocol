@@ -46,15 +46,16 @@ egress::EgressPollClient egress_client("127.0.0.1", 8080);
 static bool lora_tx_via_serial(const uint8_t* data, size_t len, void* /*user*/) {
     // Re-encode the decoded PacketC back into ASCII hex so the firmware
     // receives the same line format it already handles for other packet
-    // types (INVOICE:, PACKET_B:, etc.).
-    // The orchestrator decoded to bytes so the production path stays
-    // agnostic of transport; re-encoding here owns the serial-line
-    // convention used by the existing firmware.
-    static constexpr size_t kPrefixLen = 13; // "PACKET_C_TX:"
+    // types (INVOICE:, PACKET_B:, etc.). Mirrors lora_tx_ack_via_serial
+    // exactly (memcpy prefix, then hex, then \n) — the earlier snprintf
+    // version left a stray '\0' at byte 12 that the firmware would have
+    // tripped on when its PACKET_C_TX: handler was wired.
+    static constexpr char   kPrefix[]  = "PACKET_C_TX:";
+    static constexpr size_t kPrefixLen = sizeof(kPrefix) - 1; // 12
     static constexpr size_t kMaxHex    = egress::EgressPacketCSize * 2;
     static constexpr size_t kLineCap   = kPrefixLen + kMaxHex + 2; // +\n +\0
     char line[kLineCap];
-    std::snprintf(line, sizeof(line), "PACKET_C_TX:");
+    std::memcpy(line, kPrefix, kPrefixLen);
     static const char kDigits[] = "0123456789abcdef";
     for (size_t i = 0; i < len && i < egress::EgressPacketCSize; ++i) {
         line[kPrefixLen + i * 2]     = kDigits[(data[i] >> 4) & 0x0Fu];

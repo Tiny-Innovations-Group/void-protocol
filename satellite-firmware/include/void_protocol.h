@@ -32,6 +32,27 @@ public:
     void hexDump(const uint8_t* data, size_t len);
     uint32_t calculateCRC(const uint8_t* data, size_t len);
 
+    // VOID-139: Listen-before-talk (LBT) on the shared half-duplex LoRa
+    // channel. channelClear() runs one hardware CAD scan (SX1262 Channel
+    // Activity Detection) and returns true when no LoRa preamble is on the
+    // air. transmitWhenClear() CAD-gates a MANDATORY transmit: it waits for
+    // a clear channel up to maxAttempts (short escalating backoff between
+    // tries), then transmits best-effort regardless — dropping a relayed
+    // receipt/unlock would stall the commerce loop. Returns true iff the
+    // frame went out on a verified-clear channel. Both leave the radio in
+    // RX afterwards.
+    bool channelClear();
+    bool transmitWhenClear(uint8_t* data, size_t len, uint8_t maxAttempts);
+
+    // VOID-139: true only when the radio's IRQ flags show a completed packet
+    // RECEPTION (RxDone). Our single DIO1 action (onRxDone) is also asserted
+    // by the SX1262 on TxDone and CadDone, so a blocking transmit() or a
+    // scanChannel() sets the rx_flag spuriously. Callers MUST gate on this
+    // before trusting getPacketLength()/readData() — otherwise they parse
+    // stale FIFO bytes (the just-transmitted frame; TX and RX share FIFO
+    // base 0x00) and mis-report an app-layer CRC failure.
+    bool isRealReception();
+
     #ifdef DEMO
     void pollDemoTriggers();
     #endif
