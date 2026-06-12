@@ -2188,6 +2188,17 @@
       "created_at": "2026-06-12T05:14:35.663369+01:00",
       "updated_at": "2026-06-12T05:14:35.663369+01:00",
       "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"commit\":\"214dda6\",\"confidence\":95}"
+    },
+    {
+      "id": 200,
+      "change_id": "cfc47334-a01a-4bb1-8609-42f68861ff39",
+      "node_type": "outcome",
+      "title": "Bench validation 2026-06-12: 7 transactions settled+dispatched (receipts.json, unique payment_ids/tx hashes, blocks 2-11, two gateway sessions, zero double-settles, no re-dispatch after restart). Seller UNLOCKED + buyer DELIVERY RECEIVED confirmed on bench; no PacketA CRC fail recurrence. VOID-139 + VOID-140 → Done. LBT/CAD kept (validated in passing config).",
+      "description": null,
+      "status": "pending",
+      "created_at": "2026-06-12T05:37:55.644728+01:00",
+      "updated_at": "2026-06-12T05:37:55.644728+01:00",
+      "metadata_json": "{\"branch\":\"claude/interesting-robinson-ba1d98\",\"confidence\":95}"
     }
   ],
   "edges": [
@@ -4621,6 +4632,28 @@
       "weight": 1.0,
       "rationale": "Implementation complete, compile-verified",
       "created_at": "2026-06-12T05:14:35.670188+01:00"
+    },
+    {
+      "id": 222,
+      "from_node_id": 198,
+      "to_node_id": 200,
+      "from_change_id": "5449640d-873d-499c-a286-d498492a9429",
+      "to_change_id": "cfc47334-a01a-4bb1-8609-42f68861ff39",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Bench-validated VOID-140",
+      "created_at": "2026-06-12T05:37:55.653107+01:00"
+    },
+    {
+      "id": 223,
+      "from_node_id": 187,
+      "to_node_id": 200,
+      "from_change_id": "2aa96cb3-3074-4313-a39b-e49965dfc8fd",
+      "to_change_id": "cfc47334-a01a-4bb1-8609-42f68861ff39",
+      "edge_type": "leads_to",
+      "weight": 1.0,
+      "rationale": "Bench-validated VOID-139 fix set",
+      "created_at": "2026-06-12T05:37:55.661427+01:00"
     }
   ]
 }
