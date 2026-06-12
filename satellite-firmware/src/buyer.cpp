@@ -14,6 +14,7 @@
 #include "buyer.h"
 #include "security_manager.h"
 #include "gps_stub.h"
+#include "packet_d_builder.h"     // VOID-140: kPacketDMagic / kPacketDSize wire layout
 
 #include <cstddef>
 #include <cstdint>
@@ -180,12 +181,41 @@ void runBuyerLoop() {
                     Serial.print("INVOICE:");
                     Void.hexDump(rx_buffer, len);
                 }
-                // --- RX PacketC: Receipt from Sat A (downlink passthrough) ---
-                else if (apid == SELLER_APID && len == SIZE_PACKET_C) {
-                    Void.updateDisplay("BUYER", "RX Receipt! Wrapping Packet D...");
-                    Serial.print("PACKET_D:");
-                    Void.hexDump(rx_buffer, len);
+                // --- RX PacketD: Delivery confirmation from Sat A (VOID-140) ---
+                // Final leg of the A→B→ACK→Settle→C→D loop: the seller
+                // accepted the signed receipt (its UNLOCK moment) and
+                // dispatched delivery. PacketAck shares APID 101 and the
+                // 136 B frame size — pkt_type differs but the F-03 magic at
+                // body offset 0 is the canonical resolver (0xD0 = PacketD,
+                // 0xAC = PacketAck). Display-only per decision 192→197:
+                // no gateway forwarding in alpha.
+                //
+                // (Replaces the stale pre-VOID-135 passthrough that matched
+                // PacketC [apid 100 / len 112] and mislabelled it PACKET_D:
+                // on serial — the real PacketD was silently dropped.)
+#if VOID_PROTOCOL_TYPE == 2
+                else if (apid == BUYER_APID && len == SIZE_PACKET_D &&
+                         rx_buffer[SIZE_VOID_HEADER] ==
+                             packet_d_builder::kPacketDMagic) {
+                    // CRC32 (IEEE-802.3, LE on wire) covers header + body up
+                    // to but excluding the CRC field; the 6-byte tail pad is
+                    // out of scope (packet_d_builder.cpp: CRC at [126..130)).
+                    constexpr size_t kDCrcOffset =
+                        packet_d_builder::kPacketDSize - 10u;  // 4 CRC + 6 tail
+                    const uint32_t calc_crc =
+                        Void.calculateCRC(rx_buffer, kDCrcOffset);
+                    const uint32_t wire_crc = loadLE32(rx_buffer + kDCrcOffset);
+                    if (calc_crc != wire_crc) {
+                        Serial.println("WARN:PacketD CRC mismatch, dropped");
+                    } else {
+                        Void.updateDisplay("BUYER", "DELIVERY RECEIVED");
+                        Serial.print("PACKET_D_RX:");
+                        Void.hexDump(rx_buffer, len);
+                        Serial.println(
+                            "BUYER: PacketD verified - delivery confirmed, loop closed");
+                    }
                 }
+#endif
             }
         }
         Void.radio.startReceive();  // re-arm RX for next packet

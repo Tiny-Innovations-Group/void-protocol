@@ -115,6 +115,13 @@ static bool handlePacketCReceipt(const uint8_t* buf, size_t len) {
         return false;
     }
 
+    // VOID-140: the verified signed receipt IS the unlock authorization —
+    // there is no separate unlock packet in the A→B→ACK→Settle→C→D loop
+    // (decision node 185). Surface the dispense moment on serial here;
+    // the OLED shows it alongside the PacketD delivery TX below. Real
+    // service dispensation stays an explicit alpha non-goal.
+    Serial.println("SELLER: Receipt verified - UNLOCKED (dispensing)");
+
     // Build PacketD. Payload convention (void_packets_snlp.h): the 98
     // body bytes of PacketC are copied verbatim into PacketD.payload so
     // the buyer can cross-reference the delivery against the receipt
@@ -135,7 +142,7 @@ static bool handlePacketCReceipt(const uint8_t* buf, size_t len) {
     // best-effort after the attempt cap.
     const bool d_clear =
         Void.transmitWhenClear(d_frame, sizeof(d_frame), kLbtMaxAttempts);
-    Void.updateDisplay("SELLER", "Delivery TX (PacketD)");
+    Void.updateDisplay("SELLER", "UNLOCKED - Delivery TX");
     Serial.println(d_clear
         ? "SELLER: PacketC received, PacketD TX'd (clear)"
         : "SELLER: PacketC received, PacketD TX'd (forced)");
